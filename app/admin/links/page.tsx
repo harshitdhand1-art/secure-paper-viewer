@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// Added linkId to store the raw database UUID for deletion
+// Changed ID to a string so it can accept both Supabase UUIDs and local timestamps
 type StudentRow = {
-  id: number;
+  id: string;
   name: string;
   phone: string;
   link: string;
@@ -19,9 +19,10 @@ export default function GenerateLinksPage() {
   const [selectedPaper, setSelectedPaper] = useState('');
   
   const [rows, setRows] = useState<StudentRow[]>([
-    { id: Date.now(), name: '', phone: '', link: '', loading: false, error: '' }
+    { id: Date.now().toString(), name: '', phone: '', link: '', loading: false, error: '' }
   ]);
 
+  // 1. Load available papers when the page loads
   useEffect(() => {
     const fetchPapers = async () => {
       const { data } = await supabase
@@ -33,22 +34,55 @@ export default function GenerateLinksPage() {
     fetchPapers();
   }, []);
 
-  const updateRow = (id: number, newValues: Partial<StudentRow>) => {
+  // 2. NEW: Automatically fetch already generated links when a paper is selected
+  useEffect(() => {
+    if (!selectedPaper) {
+      setRows([{ id: Date.now().toString(), name: '', phone: '', link: '', loading: false, error: '' }]);
+      return;
+    }
+
+    const fetchExistingLinks = async () => {
+      const { data, error } = await supabase
+        .from('share_links')
+        .select('id, students(name, phone_number)')
+        .eq('paper_id', selectedPaper);
+
+      if (data && data.length > 0) {
+        // Map the existing links from the database into our table rows
+        const loadedRows = data.map((link: any) => ({
+          id: link.id,
+          name: link.students.name,
+          phone: link.students.phone_number,
+          link: `${window.location.origin}/view/${link.id}`,
+          linkId: link.id,
+          loading: false,
+          error: ''
+        }));
+        // Add one blank row at the bottom for new students
+        setRows([...loadedRows, { id: Date.now().toString(), name: '', phone: '', link: '', loading: false, error: '' }]);
+      } else {
+        // If no one has a link for this paper yet, just show one blank row
+        setRows([{ id: Date.now().toString(), name: '', phone: '', link: '', loading: false, error: '' }]);
+      }
+    };
+
+    fetchExistingLinks();
+  }, [selectedPaper]);
+
+  const updateRow = (id: string, newValues: Partial<StudentRow>) => {
     setRows(prevRows => 
       prevRows.map(row => row.id === id ? { ...row, ...newValues } : row)
     );
   };
 
   const addRow = () => {
-    setRows([...rows, { id: Date.now(), name: '', phone: '', link: '', loading: false, error: '' }]);
+    setRows([...rows, { id: Date.now().toString(), name: '', phone: '', link: '', loading: false, error: '' }]);
   };
 
-  // NEW: Function to permanently delete the link from the database and UI
-  const handleDeleteRow = async (rowId: number) => {
+  const handleDeleteRow = async (rowId: string) => {
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
 
-    // If a live link was already generated, delete it from Supabase
     if (row.linkId) {
       const isConfirmed = window.confirm(`Are you sure you want to permanently delete the link for ${row.name}?`);
       if (!isConfirmed) return;
@@ -66,15 +100,14 @@ export default function GenerateLinksPage() {
       }
     }
 
-    // Remove the row from the screen (if it's the last row, just reset it to blank)
     if (rows.length === 1) {
-      setRows([{ id: Date.now(), name: '', phone: '', link: '', loading: false, error: '' }]);
+      setRows([{ id: Date.now().toString(), name: '', phone: '', link: '', loading: false, error: '' }]);
     } else {
       setRows(prevRows => prevRows.filter(r => r.id !== rowId));
     }
   };
 
-  const handleGenerate = async (rowId: number) => {
+  const handleGenerate = async (rowId: string) => {
     if (!selectedPaper) {
       alert("Please select a question paper at the top first!");
       return;
@@ -133,7 +166,6 @@ export default function GenerateLinksPage() {
       }
 
       const fullUrl = `${window.location.origin}/view/${link.id}`;
-      // Updated to store the raw link.id so we can delete it later
       updateRow(rowId, { link: fullUrl, linkId: link.id, loading: false });
       
     } catch (error: any) {

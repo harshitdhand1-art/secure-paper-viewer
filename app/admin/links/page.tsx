@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// Define what a "Row" looks like
+// Added linkId to store the raw database UUID for deletion
 type StudentRow = {
   id: number;
   name: string;
   phone: string;
   link: string;
+  linkId?: string; 
   loading: boolean;
   error: string;
 };
@@ -17,12 +18,10 @@ export default function GenerateLinksPage() {
   const [papers, setPapers] = useState<any[]>([]);
   const [selectedPaper, setSelectedPaper] = useState('');
   
-  // Start with one empty row in the table
   const [rows, setRows] = useState<StudentRow[]>([
     { id: Date.now(), name: '', phone: '', link: '', loading: false, error: '' }
   ]);
 
-  // Load available papers when the page loads
   useEffect(() => {
     const fetchPapers = async () => {
       const { data } = await supabase
@@ -34,19 +33,47 @@ export default function GenerateLinksPage() {
     fetchPapers();
   }, []);
 
-  // Helper function to update a specific row's data
   const updateRow = (id: number, newValues: Partial<StudentRow>) => {
     setRows(prevRows => 
       prevRows.map(row => row.id === id ? { ...row, ...newValues } : row)
     );
   };
 
-  // Add a new blank row to the bottom of the table
   const addRow = () => {
     setRows([...rows, { id: Date.now(), name: '', phone: '', link: '', loading: false, error: '' }]);
   };
 
-  // The Generate Logic (Targeted at a specific row)
+  // NEW: Function to permanently delete the link from the database and UI
+  const handleDeleteRow = async (rowId: number) => {
+    const row = rows.find(r => r.id === rowId);
+    if (!row) return;
+
+    // If a live link was already generated, delete it from Supabase
+    if (row.linkId) {
+      const isConfirmed = window.confirm(`Are you sure you want to permanently delete the link for ${row.name}?`);
+      if (!isConfirmed) return;
+
+      updateRow(rowId, { loading: true });
+      
+      const { error } = await supabase
+        .from('share_links')
+        .delete()
+        .eq('id', row.linkId);
+      
+      if (error) {
+        updateRow(rowId, { error: 'Failed to delete link', loading: false });
+        return;
+      }
+    }
+
+    // Remove the row from the screen (if it's the last row, just reset it to blank)
+    if (rows.length === 1) {
+      setRows([{ id: Date.now(), name: '', phone: '', link: '', loading: false, error: '' }]);
+    } else {
+      setRows(prevRows => prevRows.filter(r => r.id !== rowId));
+    }
+  };
+
   const handleGenerate = async (rowId: number) => {
     if (!selectedPaper) {
       alert("Please select a question paper at the top first!");
@@ -62,7 +89,6 @@ export default function GenerateLinksPage() {
     updateRow(rowId, { loading: true, error: '', link: '' });
 
     try {
-      // 1. Find or create the student
       let { data: student } = await supabase
         .from('students')
         .select('*')
@@ -80,7 +106,6 @@ export default function GenerateLinksPage() {
         student = newStudent;
       }
 
-      // 2. Get questions for shuffling
       const { data: questions, error: qError } = await supabase
         .from('questions')
         .select('id')
@@ -88,10 +113,8 @@ export default function GenerateLinksPage() {
         
       if (qError) throw qError;
 
-      // 3. Shuffle question IDs
       const shuffledIds = questions.map(q => q.id).sort(() => Math.random() - 0.5);
 
-      // 4. Create the unique link
       const { data: link, error: linkError } = await supabase
         .from('share_links')
         .insert([{
@@ -109,9 +132,9 @@ export default function GenerateLinksPage() {
          throw linkError;
       }
 
-      // 5. Output the URL to the row
       const fullUrl = `${window.location.origin}/view/${link.id}`;
-      updateRow(rowId, { link: fullUrl, loading: false });
+      // Updated to store the raw link.id so we can delete it later
+      updateRow(rowId, { link: fullUrl, linkId: link.id, loading: false });
       
     } catch (error: any) {
       updateRow(rowId, { error: error.message, loading: false });
@@ -143,7 +166,7 @@ export default function GenerateLinksPage() {
               <th className="p-4 font-bold text-sm">Student Name</th>
               <th className="p-4 font-bold text-sm">Phone Number</th>
               <th className="p-4 font-bold text-sm">Unique Link</th>
-              <th className="p-4 font-bold text-sm w-32">Action</th>
+              <th className="p-4 font-bold text-sm w-40">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -156,7 +179,7 @@ export default function GenerateLinksPage() {
                     className="w-full p-2 border rounded"
                     value={row.name}
                     onChange={(e) => updateRow(row.id, { name: e.target.value })}
-                    disabled={!!row.link} // Lock input if link is already generated
+                    disabled={!!row.link}
                   />
                 </td>
                 <td className="p-4">
@@ -184,19 +207,35 @@ export default function GenerateLinksPage() {
                   )}
                 </td>
                 <td className="p-4">
-                  {!row.link ? (
-                    <button 
-                      onClick={() => handleGenerate(row.id)}
-                      disabled={row.loading}
-                      className="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 disabled:bg-gray-400 w-full"
-                    >
-                      {row.loading ? '...' : 'Generate'}
-                    </button>
-                  ) : (
-                    <span className="inline-block px-4 py-2 bg-green-100 text-green-800 font-bold rounded w-full text-center">
-                      Done
-                    </span>
-                  )}
+                  <div className="flex gap-2">
+                    {!row.link ? (
+                      <>
+                        <button 
+                          onClick={() => handleGenerate(row.id)}
+                          disabled={row.loading}
+                          className="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 disabled:bg-gray-400 w-full"
+                        >
+                          {row.loading ? '...' : 'Generate'}
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteRow(row.id)}
+                          disabled={row.loading}
+                          className="px-3 py-2 bg-red-100 text-red-600 font-bold rounded hover:bg-red-200"
+                          title="Remove Empty Row"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    ) : (
+                      <button 
+                        onClick={() => handleDeleteRow(row.id)}
+                        disabled={row.loading}
+                        className="px-4 py-2 bg-red-600 text-white font-bold rounded hover:bg-red-700 disabled:bg-gray-400 w-full"
+                      >
+                        {row.loading ? '...' : 'Delete Link'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

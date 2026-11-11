@@ -17,7 +17,6 @@ export default function SecureViewerPage({ params }: { params: Promise<{ id: str
   
   const [studentName, setStudentName] = useState('');
   const [studentPhone, setStudentPhone] = useState('');
-  // Updated the state type to match our database column name
   const [questions, setQuestions] = useState<{ id: string, question_text: string }[]>([]);
 
   useEffect(() => {
@@ -103,20 +102,19 @@ export default function SecureViewerPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="min-h-screen bg-gray-900 pb-20">
-      {/* Shortened the banner text here */}
       <div className="sticky top-0 bg-red-600 text-white text-center py-2 font-bold z-50 text-sm md:text-base shadow-md">
         CONFIDENTIAL: This paper is securely locked to {studentName} ({studentPhone}).
       </div>
 
       <div className="max-w-4xl mx-auto px-4 mt-8 flex flex-col gap-10 select-none">
         {questions.map((q, index) => {
-          // Changed q.text to q.question_text to fix the "undefined" bug
           const imageUrl = `/api/render-question?name=${encodeURIComponent(studentName)}&number=${encodeURIComponent(studentPhone)}&q=${encodeURIComponent(q.question_text)}`;
           
           return (
-            <div key={q.id} className="relative w-full rounded shadow-2xl overflow-hidden bg-white">
-              <div className="absolute top-0 left-0 bg-black text-white px-4 py-2 font-bold text-xl z-20 rounded-br">
-                Q {index + 1}
+            <div key={q.id} className="w-full rounded shadow-2xl overflow-hidden bg-white">
+              {/* Solid header bar acting as the question number container */}
+              <div className="bg-black text-white px-6 py-3 font-bold text-xl border-b-4 border-red-600 flex justify-between items-center">
+                <span>Question {index + 1}</span>
               </div>
               
               <img 

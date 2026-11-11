@@ -7,34 +7,66 @@ export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchLogs = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('access_logs')
+      .select(`
+        id,
+        action,
+        device_browser,
+        created_at,
+        share_links (
+          students ( name, phone_number ),
+          papers ( title )
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (data) setLogs(data);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchLogs = async () => {
-      // Fetch the latest 100 logs and join them with the student and paper details
-      const { data, error } = await supabase
-        .from('access_logs')
-        .select(`
-          id,
-          action,
-          device_browser,
-          created_at,
-          share_links (
-            students ( name, phone_number ),
-            papers ( title )
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (data) setLogs(data);
-      setLoading(false);
-    };
-
     fetchLogs();
   }, []);
 
+  // NEW: Secure function to clear all logs
+  const handleClearLogs = async () => {
+    const isConfirmed = window.confirm("Are you sure you want to permanently delete all access logs? This cannot be undone.");
+    if (!isConfirmed) return;
+
+    setLoading(true);
+    
+    // Supabase requires a filter for deletes, so we say "delete everything where ID is not null"
+    const { error } = await supabase
+      .from('access_logs')
+      .delete()
+      .not('id', 'is', null);
+
+    if (error) {
+      alert("Error clearing logs: " + error.message);
+    } else {
+      setLogs([]); // instantly empty the table on screen
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="p-10 max-w-6xl mx-auto font-sans text-black">
-      <h1 className="text-3xl font-bold mb-6">Admin: Security Access Logs</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Admin: Security Access Logs</h1>
+        
+        {/* NEW: The Clear Logs Button */}
+        <button 
+          onClick={handleClearLogs}
+          disabled={loading || logs.length === 0}
+          className="px-4 py-2 bg-red-600 text-white font-bold rounded hover:bg-red-700 disabled:bg-gray-400"
+        >
+          Clear All Logs
+        </button>
+      </div>
       
       <div className="bg-white rounded-lg shadow-md border overflow-hidden">
         <table className="w-full text-left border-collapse">
@@ -54,7 +86,6 @@ export default function LogsPage() {
               <tr><td colSpan={5} className="p-6 text-center font-bold text-gray-500">No access logs found yet.</td></tr>
             ) : (
               logs.map((log) => {
-                // Determine the color based on the action
                 const isBlocked = log.action.includes('BLOCKED');
                 const statusColor = isBlocked ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
 

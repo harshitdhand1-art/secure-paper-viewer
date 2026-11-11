@@ -5,10 +5,13 @@ export const runtime = 'edge';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   
-  // Extract parameters from the URL
   const studentName = searchParams.get('name') || 'Unknown Student';
   const studentNumber = searchParams.get('number') || '0000000000';
   const questionText = searchParams.get('q') || 'Question text goes here.';
+
+  // Smart Font Sizing: If it's a very long question, shrink the text so it fits
+  const isLongQuestion = questionText.length > 250;
+  const dynamicFontSize = isLongQuestion ? '26px' : '36px';
 
   return new ImageResponse(
     (
@@ -19,13 +22,13 @@ export async function GET(request: Request) {
           width: '100%',
           height: '100%',
           backgroundColor: '#ffffff',
-          padding: '60px',
+          padding: '80px', // Slightly larger padding so text doesn't hit the absolute edge
           fontFamily: 'sans-serif',
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        {/* Fixed Server-Side Watermark - UPDATED FOR BETTER VISIBILITY */}
+        {/* Fixed Server-Side Watermark */}
         <div
           style={{
             position: 'absolute',
@@ -35,17 +38,17 @@ export async function GET(request: Request) {
             bottom: '-20%',
             display: 'flex',
             flexWrap: 'wrap',
-            gap: '30px', // Tighter spacing so more watermarks fit on screen
-            opacity: 0.22, // Slightly darker so it doesn't wash out at angles
+            gap: '30px',
+            opacity: 0.22, 
             transform: 'rotate(-25deg)',
             fontSize: '36px',
-            fontWeight: 'bold', // Makes the watermark text thick and bold
+            fontWeight: 'bold',
             color: '#000000',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          {Array.from({ length: 50 }).map((_, i) => (
+          {Array.from({ length: 60 }).map((_, i) => (
             <span key={i} style={{ display: 'flex' }}>
               {studentName} • {studentNumber}
             </span>
@@ -56,11 +59,12 @@ export async function GET(request: Request) {
         <div
           style={{
             display: 'flex',
-            fontSize: '42px',
+            fontSize: dynamicFontSize,
             color: '#000000',
             zIndex: 10,
-            lineHeight: 1.5,
-            fontWeight: '500', // Making the actual question slightly thicker to stand out against the bold watermark
+            lineHeight: 1.6,
+            fontWeight: '500',
+            whiteSpace: 'pre-wrap', // Ensures line-breaks within the question render correctly
           }}
         >
           {questionText}
@@ -69,7 +73,7 @@ export async function GET(request: Request) {
     ),
     {
       width: 1200,
-      height: 630,
+      height: 800, // Made the canvas taller to accommodate long pediatrics cases
     }
   );
 }
